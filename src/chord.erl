@@ -39,45 +39,11 @@ stabilize(_Nodes, _State) ->
   io:fwrite("\n Wait...\n").
 send_messages_and_kill(_Nodes, NumNodes, NumRequest, M, _State) ->
   register(taskcompletionmonitor, spawn(chord, listen_task_completion, [NumNodes * NumRequest, 0])),
-
   send_messages_all_nodes(_Nodes, NumRequest, M, _State),
-
   TotalHops = getTotalHops(),
-
   io:format("~n Average Hops = ~p, Total Hops: ~p, Node Connections: ~p ~n", [TotalHops/(NumNodes * NumRequest), TotalHops, NumNodes * NumRequest]),
   io:fwrite("End time: ~p",[erlang:localtime()]),
   kill_all_nodes(_Nodes, _State).
-
-%%randomNode(Node_id, []) -> Node_id;
-%%randomNode(_, ExistingNodes) -> lists:nth(rand:uniform(length(ExistingNodes)), ExistingNodes).
-%%
-%%get_forward_distance(Key, Key, _, Distance) ->
-%%  Distance;
-%%get_forward_distance(Key, NodeId, M, Distance) ->
-%%  get_forward_distance(Key, (NodeId + 1) rem trunc(math:pow(2, M)), M, Distance + 1)
-%%.
-
-get_closest(_, [], MinNode, _, _) ->
-  MinNode;
-get_closest(Key, FingerNodeIds, MinNode, MinVal, State) ->
-  [First| Rest] = FingerNodeIds,
-
-  Distance = helper:get_forward_distance(Key, First, dict:fetch(m, State), 0),
-  if
-    Distance < MinVal ->
-      get_closest(Key, Rest, First, Distance, State);
-    true ->
-      get_closest(Key, Rest, MinNode, MinVal, State)
-  end
-.
-
-get_closest_node(Key, FingerNodeIds, State) ->
-  case lists:member(Key, FingerNodeIds) of
-    true -> Key;
-    _ -> get_closest(Key, FingerNodeIds, -1, 10000000, State)
-  end
-
-.
 
 node_listen(NodeState) ->
   Hash = dict:fetch(id, NodeState),
@@ -88,7 +54,7 @@ node_listen(NodeState) ->
 
     {lookup, Id, Key, HopsCount, Pid} ->
 
-      NodeVal = get_closest_node(Key, dict:fetch_keys(dict:fetch(finger_table ,NodeState)), NodeState),
+      NodeVal = helper:get_closest_node(Key, dict:fetch_keys(dict:fetch(finger_table ,NodeState)), NodeState),
       UpdatedState = NodeState,
       %io:format("Lookup::: ~p  For Key ~p  ClosestNode ~p ~n", [Hash, Key, NodeVal]),
       if
@@ -100,8 +66,7 @@ node_listen(NodeState) ->
 
         true ->
           dict:fetch(NodeVal, dict:fetch(finger_table, NodeState)) ! {lookup, Id, Key, HopsCount + 1, self()}
-      end
-  ;
+      end;
     {kill} ->
       UpdatedState = NodeState,
       exit("received exit signal");
@@ -163,8 +128,7 @@ send_messages_all_nodes(_Nodes, NumRequest, M, _State) ->
   timer:sleep(1000),
   Key = lists:nth(rand:uniform(length(_Nodes)), _Nodes),
   send_message_to_node(Key, _Nodes, _State),
-  send_messages_all_nodes(_Nodes, NumRequest - 1, M, _State)
-.
+  send_messages_all_nodes(_Nodes, NumRequest - 1, M, _State).
 
 kill_all_nodes([], _) ->
   ok;
@@ -179,13 +143,6 @@ getTotalHops() ->
       HopsCount
   end.
 
-
-
-
-
-
-
-
 get_ith_successor(_, _, I , I, CurID, M) ->
   CurID;
 
@@ -194,16 +151,14 @@ get_ith_successor(Hash, _State, I, Cur, CurID, M) ->
     error ->
       get_ith_successor(Hash, _State, I, Cur, (CurID + 1) rem trunc(math:pow(2, M)),M);
     _ -> get_ith_successor(Hash, _State, I, Cur + 1, (CurID + 1) rem trunc(math:pow(2, M)),M)
-  end
-.
+  end.
 
 get_finger_table(_, _, M, M,FingerList) ->
   FingerList;
 get_finger_table(Node, _State, M, I, FingerList) ->
   Hash = element(1, Node),
   Ith_succesor = get_ith_successor(Hash, _State, trunc(math:pow(2, I)), 0, Hash, M),
-  get_finger_table(Node, _State, M, I + 1, FingerList ++ [{Ith_succesor, dict:fetch(Ith_succesor, _State)}] )
-.
+  get_finger_table(Node, _State, M, I + 1, FingerList ++ [{Ith_succesor, dict:fetch(Ith_succesor, _State)}] ).
 
 
 collectfingertables(_, [], FTDict,_) ->
@@ -212,8 +167,7 @@ collectfingertables(_, [], FTDict,_) ->
 collectfingertables(_State, NetList, FTDict,M) ->
   [First | Rest] = NetList,
   FingerTables = get_finger_table(First, _State,M, 0,[]),
-  collectfingertables(_State, Rest, dict:store(element(1, First), FingerTables, FTDict), M)
-.
+  collectfingertables(_State, Rest, dict:store(element(1, First), FingerTables, FTDict), M).
 
 send_finger_tables_nodes([], _, _) ->
   ok;
