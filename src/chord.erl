@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @author dhanush
+%%% @author dhanush,akhil
 %%% @copyright (C) 2022, <COMPANY>
 %%% @doc
 %%%
@@ -7,26 +7,25 @@
 %%% Created : 19. Oct 2022 5:25 PM
 %%%-------------------------------------------------------------------
 -module(chord).
--author("dhanush").
+-author("dhanush,akhil").
 
 -export([create_network/2, node/4, listen_task_completion/2, main/2]).
 
 main(_nodes, _requests) ->
-
   io:fwrite("Start time: ~p",[erlang:localtime()]),
   register(main, spawn(chord, create_network, [_nodes, _requests])).
 create_network(_nodecount, _requests) ->
   M = trunc(math:ceil(math:log2(_nodecount))),
-  [_Nodes, _State] = create_nodes([], round(math:pow(2, M)), M, _nodecount, dict:new()),
+  [_Nodes, _State] = start_Nodes([], round(math:pow(2, M)), M, _nodecount, dict:new()),
   send_finger_tables(_State,M),
   stabilize(_Nodes, _State),
   send_messages_and_kill(_Nodes, _nodecount, _requests, M, _State).
 
-create_nodes(_Nodes, _, _, 0, _State) ->
+start_Nodes(_Nodes, _, _, 0, _State) ->
   [_Nodes, _State];
-create_nodes(_Nodes, TotalNodes, M, NumNodes, _State) ->
+start_Nodes(_Nodes, TotalNodes, M, NumNodes, _State) ->
   [Hash, New_State] = add_node_to_chord(_Nodes, TotalNodes,  M, _State),
-  create_nodes(lists:append(_Nodes, [Hash]), TotalNodes, M, NumNodes - 1, New_State).
+  start_Nodes(lists:append(_Nodes, [Hash]), TotalNodes, M, NumNodes - 1, New_State).
 send_finger_tables(_State,M) ->
   FingerTables = collectfingertables(_State, dict:to_list(_State), dict:new(),M),
   %io:format("~n~p~n", [FingerTables]),
@@ -49,11 +48,8 @@ send_messages_and_kill(_Nodes, NumNodes, NumRequest, M, _State) ->
   io:fwrite("End time: ~p",[erlang:localtime()]),
   kill_all_nodes(_Nodes, _State).
 
-
-
 randomNode(Node_id, []) -> Node_id;
 randomNode(_, ExistingNodes) -> lists:nth(rand:uniform(length(ExistingNodes)), ExistingNodes).
-
 
 get_forward_distance(Key, Key, _, Distance) ->
   Distance;
