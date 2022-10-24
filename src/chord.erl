@@ -56,7 +56,6 @@ node_listen(NodeState) ->
 
       NodeVal = helper:get_closest_node(Key, dict:fetch_keys(dict:fetch(finger_table ,NodeState)), NodeState),
       UpdatedState = NodeState,
-      %io:format("Lookup::: ~p  For Key ~p  ClosestNode ~p ~n", [Hash, Key, NodeVal]),
       if
 
         (Hash == Key) ->
@@ -73,13 +72,11 @@ node_listen(NodeState) ->
     {state, Pid} -> Pid ! NodeState,
       UpdatedState = NodeState;
     {stabilize, _State} -> ok,
-      %io:fwrite("Stabilzing the network"),
       UpdatedState = NodeState
   end,
   node_listen(UpdatedState).
 
 node(Hash, M, _Nodes, NodeState) ->
-  %io:format("Node is spawned with hash ~p",[Hash]),
   FingerTable = lists:duplicate(M, helper:randomNode(Hash, _Nodes)),
   NodeStateUpdated = dict:from_list([{id, Hash}, {predecessor, stable}, {finger_table, FingerTable}, {next, 0}, {m, M}]),
   node_listen(NodeStateUpdated).
@@ -99,7 +96,6 @@ add_node_to_chord(_Nodes, TotalNodes, M, _State) ->
   RemainingHashes = lists:seq(0, TotalNodes - 1, 1) -- _Nodes,
   Hash = lists:nth(rand:uniform(length(RemainingHashes)), RemainingHashes),
   Pid = spawn(chord, node, [Hash, M, _Nodes, dict:new()]),
-  %%:format("~n ~p ~p ~n", [Hash, Pid]),
   [Hash, dict:store(Hash, Pid, _State)].
 
 
@@ -109,7 +105,6 @@ listen_task_completion(0, HopsCount) ->
 listen_task_completion(NumRequests, HopsCount) ->
   receive
     {completed, Pid, HopsCountForTask, Key} ->
-      % io:format("received completion from ~p, Number of Hops ~p, For Key ~p", [Pid, HopsCountForTask, Key]),
       listen_task_completion(NumRequests - 1, HopsCount + HopsCountForTask)
   end.
 
@@ -120,7 +115,6 @@ send_message_to_node(Key, _Nodes, _State) ->
   Pid = get_node_pid(First, _State),
   Pid ! {lookup, First, Key, 0, self()},
   send_message_to_node(Key, Rest, _State).
-
 
 send_messages_all_nodes(_, 0, _, _) ->
   ok;
