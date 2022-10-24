@@ -12,6 +12,7 @@
 -export([create_network/2, node/4, listen_task_completion/2, main/2]).
 
 main(_nodes, _requests) ->
+
   io:fwrite("Start time: ~p",[erlang:localtime()]),
   register(main, spawn(chord, create_network, [_nodes, _requests])).
 create_network(_nodecount, _requests) ->
@@ -28,7 +29,7 @@ create_nodes(_Nodes, TotalNodes, M, NumNodes, _State) ->
   create_nodes(lists:append(_Nodes, [Hash]), TotalNodes, M, NumNodes - 1, New_State).
 send_finger_tables(_State,M) ->
   FingerTables = collectfingertables(_State, dict:to_list(_State), dict:new(),M),
-  io:format("~n~p~n", [FingerTables]),
+  %io:format("~n~p~n", [FingerTables]),
   send_finger_tables_nodes(dict:fetch_keys(FingerTables), _State, FingerTables).
 stabilize(_Nodes, _State) ->
   Pid = get_node_pid(lists:nth(rand:uniform(length(_Nodes)), _Nodes), _State),
@@ -36,8 +37,7 @@ stabilize(_Nodes, _State) ->
     stable -> stabilize(_Nodes, _State);
     _ -> Pid ! {stabilize, _State}
   end,
-
-  io:fwrite("Stabilizing the network").
+  io:fwrite("\n Wait...\n").
 send_messages_and_kill(_Nodes, NumNodes, NumRequest, M, _State) ->
   register(taskcompletionmonitor, spawn(chord, listen_task_completion, [NumNodes * NumRequest, 0])),
 
@@ -45,7 +45,7 @@ send_messages_and_kill(_Nodes, NumNodes, NumRequest, M, _State) ->
 
   TotalHops = getTotalHops(),
 
-  io:format("~n Average Hops = ~p ~p ~p ~n", [TotalHops/(NumNodes * NumRequest), TotalHops, NumNodes * NumRequest]),
+  io:format("~n Average Hops = ~p, Total Hops: ~p, Node Connections: ~p ~n", [TotalHops/(NumNodes * NumRequest), TotalHops, NumNodes * NumRequest]),
   io:fwrite("End time: ~p",[erlang:localtime()]),
   kill_all_nodes(_Nodes, _State).
 
@@ -110,17 +110,17 @@ node_listen(NodeState) ->
       exit("received exit signal");
     {state, Pid} -> Pid ! NodeState,
       UpdatedState = NodeState;
-    {stabilize, _State} -> io:fwrite("Stabilzing the network"),
+    {stabilize, _State} -> ok,
+      %io:fwrite("Stabilzing the network"),
       UpdatedState = NodeState
   end,
   node_listen(UpdatedState).
 
 node(Hash, M, _Nodes, NodeState) ->
-  io:format("Node is spawned with hash ~p",[Hash]),
+  %io:format("Node is spawned with hash ~p",[Hash]),
   FingerTable = lists:duplicate(M, randomNode(Hash, _Nodes)),
   NodeStateUpdated = dict:from_list([{id, Hash}, {predecessor, stable}, {finger_table, FingerTable}, {next, 0}, {m, M}]),
-  node_listen(NodeStateUpdated)
-.
+  node_listen(NodeStateUpdated).
 
 
 get_m(NumNodes) ->
@@ -131,29 +131,25 @@ get_node_pid(Hash, _State) ->
   case dict:find(Hash, _State) of
     error -> stable;
     _ -> dict:fetch(Hash, _State)
-  end
-.
+  end.
 
 add_node_to_chord(_Nodes, TotalNodes, M, _State) ->
   RemainingHashes = lists:seq(0, TotalNodes - 1, 1) -- _Nodes,
   Hash = lists:nth(rand:uniform(length(RemainingHashes)), RemainingHashes),
   Pid = spawn(chord, node, [Hash, M, _Nodes, dict:new()]),
-  io:format("~n ~p ~p ~n", [Hash, Pid]),
-  [Hash, dict:store(Hash, Pid, _State)]
-.
+  %%:format("~n ~p ~p ~n", [Hash, Pid]),
+  [Hash, dict:store(Hash, Pid, _State)].
 
 
 listen_task_completion(0, HopsCount) ->
-  main ! {totalhops, HopsCount}
-;
+  main ! {totalhops, HopsCount};
 
 listen_task_completion(NumRequests, HopsCount) ->
   receive
     {completed, Pid, HopsCountForTask, Key} ->
       % io:format("received completion from ~p, Number of Hops ~p, For Key ~p", [Pid, HopsCountForTask, Key]),
       listen_task_completion(NumRequests - 1, HopsCount + HopsCountForTask)
-  end
-.
+  end.
 
 send_message_to_node(_, [], _) ->
   ok;
@@ -161,8 +157,7 @@ send_message_to_node(Key, _Nodes, _State) ->
   [First | Rest] = _Nodes,
   Pid = get_node_pid(First, _State),
   Pid ! {lookup, First, Key, 0, self()},
-  send_message_to_node(Key, Rest, _State)
-.
+  send_message_to_node(Key, Rest, _State).
 
 
 send_messages_all_nodes(_, 0, _, _) ->
