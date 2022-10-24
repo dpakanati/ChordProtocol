@@ -9,62 +9,62 @@
 -module(chord).
 -author("dhanush,akhil").
 
--export([create_network/2, node/4, listen_task_completion/2, main/2]).
+-export([create_network/2, node/4, checkCompletion/2, main/2]).
 
 main(_nodes, _requests) ->
-  io:fwrite("Start time: ~p",[erlang:localtime()]),
+  %io:fwrite("Start time: ~p",[erlang:localtime()]),
+  {{_,_,_},{_,Min,Sec}} = erlang:localtime(),
+  io:fwrite("Start time Min: ~p, Sec: ~p\n",[Min, Sec]),
   register(main, spawn(chord, create_network, [_nodes, _requests])).
 create_network(_nodecount, _requests) ->
   M = trunc(math:ceil(math:log2(_nodecount))),
   [_Nodes, _State] = start_Nodes([], round(math:pow(2, M)), M, _nodecount, dict:new()),
-  send_finger_tables(_State,M),
+  sendTables(_State,M),
   stabilize(_Nodes, _State),
-  send_messages_and_kill(_Nodes, _nodecount, _requests, M, _State).
+  sendAndKill(_Nodes, _nodecount, _requests, M, _State).
 
 start_Nodes(_Nodes, _, _, 0, _State) ->
   [_Nodes, _State];
-start_Nodes(_Nodes, TotalNodes, M, NumNodes, _State) ->
-  [Hash, New_State] = add_node_to_chord(_Nodes, TotalNodes,  M, _State),
-  start_Nodes(lists:append(_Nodes, [Hash]), TotalNodes, M, NumNodes - 1, New_State).
-send_finger_tables(_State,M) ->
-  FingerTables = collectfingertables(_State, dict:to_list(_State), dict:new(),M),
-  %io:format("~n~p~n", [FingerTables]),
-  send_finger_tables_nodes(dict:fetch_keys(FingerTables), _State, FingerTables).
+start_Nodes(_Nodes, _Total, M, NumNodes, _State) ->
+  [_hash, New_State] = addToNetwork(_Nodes, _Total,  M, _State),
+  start_Nodes(lists:append(_Nodes, [_hash]), _Total, M, NumNodes - 1, New_State).
+sendTables(_State,M) ->
+  _fingerTabs = collectTable(_State, dict:to_list(_State), dict:new(),M),
+  tabNodes(dict:fetch_keys(_fingerTabs), _State, _fingerTabs).
 stabilize(_Nodes, _State) ->
-  Pid = get_node_pid(lists:nth(rand:uniform(length(_Nodes)), _Nodes), _State),
+  Pid = getID(lists:nth(rand:uniform(length(_Nodes)), _Nodes), _State),
   case Pid of
     stable -> stabilize(_Nodes, _State);
     _ -> Pid ! {stabilize, _State}
   end,
   io:fwrite("\n Wait...\n").
-send_messages_and_kill(_Nodes, NumNodes, NumRequest, M, _State) ->
-  register(taskcompletionmonitor, spawn(chord, listen_task_completion, [NumNodes * NumRequest, 0])),
-  send_messages_all_nodes(_Nodes, NumRequest, M, _State),
-  TotalHops = getTotalHops(),
-  io:format("~n Average Hops = ~p, Total Hops: ~p, Node Connections: ~p ~n", [TotalHops/(NumNodes * NumRequest), TotalHops, NumNodes * NumRequest]),
-  io:fwrite("End time: ~p",[erlang:localtime()]),
-  kill_all_nodes(_Nodes, _State).
+sendAndKill(_Nodes, NumNodes, _NumReqs, M, _State) ->
+  register(completed, spawn(chord, checkCompletion, [NumNodes * _NumReqs, 0])),
+  broadcast_message(_Nodes, _NumReqs, M, _State),
+  TotalHops = totalHops(),
 
-node_listen(NodeState) ->
-  Hash = dict:fetch(id, NodeState),
+  io:format("~n Average Hops = ~p, Total Hops: ~p, Node Connections: ~p ~n", [(TotalHops/(NumNodes * _NumReqs)), TotalHops, NumNodes * _NumReqs]),
+  {{_,_,_},{_,Min,Sec}} = erlang:localtime(),
+  io:fwrite("End time Min: ~p, Sec: ~p.\n",[Min, Sec]),
+  %io:fwrite("End time: ~p...\n",[erlang:localtime()]),
+  kill(_Nodes, _State).
+
+listen(NodeState) ->
+  _hash = dict:fetch(id, NodeState),
   receive
-    {finger_table, FingerTable} ->
-      % io:format("Received Finger for ~p ~p", [Hash, FingerTable]),
-      UpdatedState = dict:store(finger_table, FingerTable, NodeState);
-
-    {lookup, Id, Key, HopsCount, Pid} ->
-
-      NodeVal = helper:get_closest_node(Key, dict:fetch_keys(dict:fetch(finger_table ,NodeState)), NodeState),
+    {finger_table, _fingerTab} ->
+      UpdatedState = dict:store(finger_table, _fingerTab, NodeState);
+    {lookup, Id, _Key, _Count, _} ->
+      _NodeVal = helper:nearest_node(_Key, dict:fetch_keys(dict:fetch(finger_table ,NodeState)), NodeState),
       UpdatedState = NodeState,
       if
-
-        (Hash == Key) ->
-          taskcompletionmonitor ! {completed, Hash, HopsCount, Key};
-        (NodeVal == Key) and (Hash =/= Key) ->
-          taskcompletionmonitor ! {completed, Hash, HopsCount, Key};
+        (_hash == _Key) ->
+          completed ! {completed, _hash, _Count, _Key};
+        (_NodeVal == _Key) and (_hash =/= _Key) ->
+          completed ! {completed, _hash, _Count, _Key};
 
         true ->
-          dict:fetch(NodeVal, dict:fetch(finger_table, NodeState)) ! {lookup, Id, Key, HopsCount + 1, self()}
+          dict:fetch(_NodeVal, dict:fetch(finger_table, NodeState)) ! {lookup, Id, _Key, _Count + 1, self()}
       end;
     {kill} ->
       UpdatedState = NodeState,
@@ -74,105 +74,93 @@ node_listen(NodeState) ->
     {stabilize, _State} -> ok,
       UpdatedState = NodeState
   end,
-  node_listen(UpdatedState).
+  listen(UpdatedState).
 
-node(Hash, M, _Nodes, NodeState) ->
-  FingerTable = lists:duplicate(M, helper:randomNode(Hash, _Nodes)),
-  NodeStateUpdated = dict:from_list([{id, Hash}, {predecessor, stable}, {finger_table, FingerTable}, {next, 0}, {m, M}]),
-  node_listen(NodeStateUpdated).
+node(_hash, M, _Nodes, NodeState) ->
+  _fingerTab = lists:duplicate(M, helper:generateRandomNode(_hash, _Nodes)),
+  NodeStateUpdated = dict:from_list([{id, _hash}, {predecessor, stable}, {finger_table, _fingerTab}, {next, 0}, {m, M}]),
+  listen(NodeStateUpdated).
 
-
-get_m(NumNodes) ->
-  trunc(math:ceil(math:log2(NumNodes)))
-.
-
-get_node_pid(Hash, _State) ->
-  case dict:find(Hash, _State) of
+getID(_hash, _State) ->
+  case dict:find(_hash, _State) of
     error -> stable;
-    _ -> dict:fetch(Hash, _State)
+    _ -> dict:fetch(_hash, _State)
   end.
 
-add_node_to_chord(_Nodes, TotalNodes, M, _State) ->
-  RemainingHashes = lists:seq(0, TotalNodes - 1, 1) -- _Nodes,
-  Hash = lists:nth(rand:uniform(length(RemainingHashes)), RemainingHashes),
-  Pid = spawn(chord, node, [Hash, M, _Nodes, dict:new()]),
-  [Hash, dict:store(Hash, Pid, _State)].
+addToNetwork(_Nodes, _Total, M, _State) ->
+  _OtherHashes = lists:seq(0, _Total - 1, 1) -- _Nodes,
+  _hash = lists:nth(rand:uniform(length(_OtherHashes)), _OtherHashes),
+  Pid = spawn(chord, node, [_hash, M, _Nodes, dict:new()]),
+  [_hash, dict:store(_hash, Pid, _State)].
 
 
-listen_task_completion(0, HopsCount) ->
-  main ! {totalhops, HopsCount};
+checkCompletion(0, _Count) ->
+  main ! {totalhops, _Count};
 
-listen_task_completion(NumRequests, HopsCount) ->
+checkCompletion(_NumReqss, _Count) ->
   receive
-    {completed, Pid, HopsCountForTask, Key} ->
-      listen_task_completion(NumRequests - 1, HopsCount + HopsCountForTask)
+    {completed, _, _CountForTask, _} ->
+      checkCompletion(_NumReqss - 1, _Count + _CountForTask)
   end.
 
-send_message_to_node(_, [], _) ->
+to_node(_, [], _) ->
   ok;
-send_message_to_node(Key, _Nodes, _State) ->
-  [First | Rest] = _Nodes,
-  Pid = get_node_pid(First, _State),
-  Pid ! {lookup, First, Key, 0, self()},
-  send_message_to_node(Key, Rest, _State).
+to_node(_Key, _Nodes, _State) ->
+  [First | Other] = _Nodes,
+  Pid = getID(First, _State),
+  Pid ! {lookup, First, _Key, 0, self()},
+  to_node(_Key, Other, _State).
 
-send_messages_all_nodes(_, 0, _, _) ->
+broadcast_message(_, 0, _, _) ->
   ok;
-send_messages_all_nodes(_Nodes, NumRequest, M, _State) ->
+broadcast_message(_Nodes, _NumReqs, M, _State) ->
   timer:sleep(1000),
-  Key = lists:nth(rand:uniform(length(_Nodes)), _Nodes),
-  send_message_to_node(Key, _Nodes, _State),
-  send_messages_all_nodes(_Nodes, NumRequest - 1, M, _State).
+  _Key = lists:nth(rand:uniform(length(_Nodes)), _Nodes),
+  to_node(_Key, _Nodes, _State),
+  broadcast_message(_Nodes, _NumReqs - 1, M, _State).
 
-kill_all_nodes([], _) ->
+kill([], _) ->
   ok;
-kill_all_nodes(_Nodes, _State) ->
-  [First | Rest] = _Nodes,
-  get_node_pid(First, _State) ! {kill},
-  kill_all_nodes(Rest, _State).
+kill(_Nodes, _State) ->
+  [_First | Other] = _Nodes,
+  getID(_First, _State) ! {kill},
+  kill(Other, _State).
 
-getTotalHops() ->
+totalHops() ->
   receive
-    {totalhops, HopsCount} ->
-      HopsCount
+    {totalhops, _Count} ->
+      _Count
   end.
 
-get_ith_successor(_, _, I , I, CurID, M) ->
-  CurID;
+n_successor(_, _, I , I, _CurID, _) ->
+  _CurID;
 
-get_ith_successor(Hash, _State, I, Cur, CurID, M) ->
-  case dict:find((CurID + 1) rem trunc(math:pow(2, M)), _State) of
+n_successor(_hash, _State, I, _Cur, _CurID, M) ->
+  case dict:find((_CurID + 1) rem trunc(math:pow(2, M)), _State) of
     error ->
-      get_ith_successor(Hash, _State, I, Cur, (CurID + 1) rem trunc(math:pow(2, M)),M);
-    _ -> get_ith_successor(Hash, _State, I, Cur + 1, (CurID + 1) rem trunc(math:pow(2, M)),M)
+      n_successor(_hash, _State, I, _Cur, (_CurID + 1) rem trunc(math:pow(2, M)),M);
+    _ -> n_successor(_hash, _State, I, _Cur + 1, (_CurID + 1) rem trunc(math:pow(2, M)),M)
   end.
 
-get_finger_table(_, _, M, M,FingerList) ->
-  FingerList;
-get_finger_table(Node, _State, M, I, FingerList) ->
-  Hash = element(1, Node),
-  Ith_succesor = get_ith_successor(Hash, _State, trunc(math:pow(2, I)), 0, Hash, M),
-  get_finger_table(Node, _State, M, I + 1, FingerList ++ [{Ith_succesor, dict:fetch(Ith_succesor, _State)}] ).
+getTable(_, _, M, M,_List) ->
+  _List;
+getTable(_Node, _State, M, I, _List) ->
+  _hash = element(1, _Node),
+  Ith_succesor = n_successor(_hash, _State, trunc(math:pow(2, I)), 0, _hash, M),
+  getTable(_Node, _State, M, I + 1, _List ++ [{Ith_succesor, dict:fetch(Ith_succesor, _State)}] ).
 
+collectTable(_, [], _FTDict,_) ->
+  _FTDict;
 
-collectfingertables(_, [], FTDict,_) ->
-  FTDict;
+collectTable(_State, _NetList, _FTDict,M) ->
+  [_First | Other] = _NetList,
+  _fingerTabs = getTable(_First, _State,M, 0,[]),
+  collectTable(_State, Other, dict:store(element(1, _First), _fingerTabs, _FTDict), M).
 
-collectfingertables(_State, NetList, FTDict,M) ->
-  [First | Rest] = NetList,
-  FingerTables = get_finger_table(First, _State,M, 0,[]),
-  collectfingertables(_State, Rest, dict:store(element(1, First), FingerTables, FTDict), M).
-
-send_finger_tables_nodes([], _, _) ->
+tabNodes([], _, _) ->
   ok;
-send_finger_tables_nodes(NodesToSend, _State, FingerTables) ->
-  [First|Rest] = NodesToSend,
+tabNodes(_Nodes, _State, _fingerTabs) ->
+  [First|Other] = _Nodes,
   Pid = dict:fetch(First ,_State),
-  Pid ! {finger_table, dict:from_list(dict:fetch(First, FingerTables))},
-  send_finger_tables_nodes(Rest, _State, FingerTables)
-.
-
-
-
-
-
+  Pid ! {finger_table, dict:from_list(dict:fetch(First, _fingerTabs))},
+  tabNodes(Other, _State, _fingerTabs).
