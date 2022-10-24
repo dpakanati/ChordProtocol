@@ -48,20 +48,21 @@ send_messages_and_kill(_Nodes, NumNodes, NumRequest, M, _State) ->
   io:fwrite("End time: ~p",[erlang:localtime()]),
   kill_all_nodes(_Nodes, _State).
 
-randomNode(Node_id, []) -> Node_id;
-randomNode(_, ExistingNodes) -> lists:nth(rand:uniform(length(ExistingNodes)), ExistingNodes).
-
-get_forward_distance(Key, Key, _, Distance) ->
-  Distance;
-get_forward_distance(Key, NodeId, M, Distance) ->
-  get_forward_distance(Key, (NodeId + 1) rem trunc(math:pow(2, M)), M, Distance + 1)
-.
+%%randomNode(Node_id, []) -> Node_id;
+%%randomNode(_, ExistingNodes) -> lists:nth(rand:uniform(length(ExistingNodes)), ExistingNodes).
+%%
+%%get_forward_distance(Key, Key, _, Distance) ->
+%%  Distance;
+%%get_forward_distance(Key, NodeId, M, Distance) ->
+%%  get_forward_distance(Key, (NodeId + 1) rem trunc(math:pow(2, M)), M, Distance + 1)
+%%.
 
 get_closest(_, [], MinNode, _, _) ->
   MinNode;
 get_closest(Key, FingerNodeIds, MinNode, MinVal, State) ->
   [First| Rest] = FingerNodeIds,
-  Distance = get_forward_distance(Key, First, dict:fetch(m, State), 0),
+
+  Distance = helper:get_forward_distance(Key, First, dict:fetch(m, State), 0),
   if
     Distance < MinVal ->
       get_closest(Key, Rest, First, Distance, State);
@@ -114,7 +115,7 @@ node_listen(NodeState) ->
 
 node(Hash, M, _Nodes, NodeState) ->
   %io:format("Node is spawned with hash ~p",[Hash]),
-  FingerTable = lists:duplicate(M, randomNode(Hash, _Nodes)),
+  FingerTable = lists:duplicate(M, helper:randomNode(Hash, _Nodes)),
   NodeStateUpdated = dict:from_list([{id, Hash}, {predecessor, stable}, {finger_table, FingerTable}, {next, 0}, {m, M}]),
   node_listen(NodeStateUpdated).
 
